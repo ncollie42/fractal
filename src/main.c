@@ -1,240 +1,170 @@
-#include <mlx.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#define WIDTH 1500
-#define HEIGHT 1000
+#include "fractal.h"
+#include <pthread.h>
 
-#define KEY_ESQ 53
-
-int exit_hook()
-{
-	//Clean up??
-	exit(EXIT_SUCCESS);
-}
-
-int test_expose(){
-	printf("TESTING EXPOSE\n");
-}
-
-
-typedef struct s_mouse
-{
-	int x;
-	int y;
-	double xx;
-	double yy;
-} t_mouse;
-
-typedef struct s_info
-{
-	void *mlx;
-	void *window1;
-	void *window2;
-	void *image1;
-	void *image2;
-	char *pixel1;
-	char *pixel2;
-	// void *window3;
-	// scaling? moving?
-	double horizontal;	
-	double vertical;
-	//Mouse Pos
-	t_mouse mouse;
-	//fractal mode
-	int mode;
-} t_info;
-
-int motion(int x, int y, t_info *info)
-{
-	char tmp[50];
-	sprintf(tmp, "X: %f Y: %f", ((x / (WIDTH / 3.0) - 2)), (y / (HEIGHT / 2.0) - 1));
-	// sprintf(tmp, "X: %f Y: %f", x * 1.0, -1 * ((y / (HEIGHT / 2 ) - 1)));
-	// sprintf(tmp, "X: %f Y: %f", (x / 500.0) - 1, -1 * (y / HEIGHT / 2) + 1);
-	mlx_clear_window(info->mlx, info->window1);
-	mlx_string_put(info->mlx, info->window1, 0 , 0, 0xffffff, tmp);
-}
-
-int keys(int key)
-{
-	if (key == KEY_ESQ)
-		exit(EXIT_SUCCESS);
-	printf("%d\n", key);
-}
-
-
-typedef struct s_vector 
-{
-	double x;
-	double y;
-} t_vector;
-
-double vector_distance(t_vector v)
-{
-	return (v.x * v.x + v.y * v.y);
-}
-//v.x * v.x is happening twice, getting distance and squaring
-t_vector vector_square_i(t_vector v)
-{
-	return (t_vector){v.x*v.x-v.y*v.y, 2*v.x*v.y};
-}
-
-t_vector vector_add(t_vector v, t_vector add)
-{
-	return (t_vector){v.x + add.x, v.y + add.y};
-}
-
-//Distance, squareing, add methods
-
-
-//pixel ->  -1 to 1 scale convertion
-t_vector pixel_to_plane(int x, int y)
-{
-
-}
-
-
-
-//julia
-int julia(int x, int y, t_vector start)
-{
-	unsigned char itter;
-	t_vector z;
-	t_vector c;
-	double xx;
-	double yy;
-	c = start;
-	itter = 0;
-	xx = (x / (WIDTH / 3.0) - 2);
-	yy = (y / (HEIGHT / 2.0) - 1);
-	z = (t_vector){xx,yy}; 
-	while (itter < 255)
-	{
-		z = vector_add(vector_square_i(z), c); 
-		if (vector_distance(z) > 4)
-			break;
-		itter++;
-				// if distance > r == 2 || h == 4; break
-	}
-	printf("X: %f Y: %f Itter: %d\t", xx, yy, itter);
-	return itter;
-}
-
-// //draw section function, Line? Quad?
-// pthread_create()
-// pthread_join()
-
-
-//mandelbrot
-int mandelbrot(int x, int y)
-{
-	unsigned char itter;
-	t_vector z;
-	t_vector c;
-	double xx;
-	double yy;
-	z = (t_vector){0,0};
-	itter = 0;
-	xx = (x / (WIDTH / 3.0) - 2);
-	yy = (y / (HEIGHT / 2.0) - 1);
-	c = (t_vector){xx,yy}; 
-	while (itter < 255)
-	{
-		z = vector_add(vector_square_i(z), c); 
-		if (vector_distance(z) > 4)
-			break;
-		itter++;
-				// if distance > r == 2 || h == 4; break
-	}
-	printf("X: %f Y: %f Itter: %d\t", xx, yy, itter);
-	return itter;
-}
 
 //get color pixel
 //Does calculation, equaltion is a function pointer set depending on the params
 #define POS(x, y, width) ((x) + (y) * (width * 4))	//Fix for efficicy
 
-void drawWindow2(char *tmp)
+typedef struct s_threading_info {
+	int start;
+	int end;
+	v_window *window;
+} t_threading_info; 
+
+void *getPixels(void *arg)
 {
-	printf("What's up \n");
+	t_threading_info *tmp;
+
+	tmp = (t_threading_info *)arg;
+	char *pixels;
 	int color;
-	for (int y = 0; y < HEIGHT; y++)
+
+	pixels = tmp->window->pixel;
+	for (int y = tmp->start; y < tmp->end; y++)
 	{
-		printf("-------  Y  -------%d \n", y);
-		//multthread here
 		for (int x = 0; x < WIDTH; x++)
 		{
-			// color = mandelbrot(x, y);
-			color = julia(x, y, (t_vector){-0.7, 0.27015});
-			// color = 100;	
-			tmp[POS(x * 4, y, WIDTH)] = color; 
-			tmp[POS(((x * 4) + 1), y, WIDTH)] = color; 
-			tmp[POS(((x * 4) + 2), y, WIDTH)] = color; 
-			tmp[POS(((x * 4) + 3), y, WIDTH)] = 0; 
-		}
-		printf("\n");
-	}
-}
-#define other 3
-void update(t_info *info)
-{
-	if (info->mode == other)
-	{
-		//drawfractal 3
-	} else {
+			color = tmp->window->func(x, y, tmp->window->mouse.updated);
 
+			pixels[POS(x * 4, y, WIDTH)] = color; 
+			pixels[POS(((x * 4) + 1), y, WIDTH)] = color; 
+			pixels[POS(((x * 4) + 2), y, WIDTH)] = color; 
+			pixels[POS(((x * 4) + 3), y, WIDTH)] = 0; 
+		}
 	}
+	return NULL;	
+}
+
+
+void drawWindow2(v_window *window)
+{
+	// getPixels(&(t_threading_info){0, HEIGHT, window});
+	pthread_t thread;
+	pthread_t thread2;
+	pthread_t thread3;
+	int section;
+
+	section = HEIGHT / 4;
+	getPixels(&(t_threading_info){0, section, window});
+	pthread_create(&thread, NULL, getPixels, &(t_threading_info){section * 1, section * 2, window});
+	pthread_create(&thread2, NULL, getPixels, &(t_threading_info){section * 2, section * 3, window});
+	pthread_create(&thread3, NULL, getPixels, &(t_threading_info){section * 3, HEIGHT, window});
+	pthread_join(thread, NULL);
+	pthread_join(thread2, NULL);
+	pthread_join(thread3, NULL);
+	// char *tmp;
+
+	// tmp = window->pixel;
+	// // printf("What's up \n");
+
+	// int color;
+	// for (int y = 0; y < HEIGHT; y++)
+	// {
+	
+	// 	// printf("-------  Y  -------%d \n", y);
+	// 	//multthread here
+
+	// 	for (int x = 0; x < WIDTH; x++)
+	// 	{
+	// 		// color = mandelbrot(x, y);
+	// 		color = window->func(x, y, window->mouse.updated);
+	// 		// color = 100;	
+	// 		tmp[POS(x * 4, y, WIDTH)] = color; 
+	// 		tmp[POS(((x * 4) + 1), y, WIDTH)] = color; 
+	// 		tmp[POS(((x * 4) + 2), y, WIDTH)] = color; 
+	// 		tmp[POS(((x * 4) + 3), y, WIDTH)] = 0; 
+	// 	}
+	// 	// printf("\n");
+	// }
+}
+
+void update(v_window *window)
+{
 
 	//setPixels
+	//UI -> location / colors
 	//clear
 	//set cordinates
 	//put on screen
-	// drawWindow2(tmp);
-	// mlx_put_image_to_window(mlx, window1, image, 0, 0);
 
+
+
+	drawWindow2(window);
+	// window->update = true;
+	//Some how sinc, wait for a something?
+
+	mlx_clear_window(window->mlx, window->window);	//Flip these two + Add UI
+	mlx_put_image_to_window(window->mlx, window->window, window->image, 0, 0);
+	ui(window);
 }
 
 
-void fillImage(char *tmp, int (*fractal))
-{
-	int color;
+
+
+
+
+
+// void fillImage(char *tmp, int (*fractal))
+// {
+// 	int color;
 
 			
-}
+// }
 
 
-void set_hooks(t_info *info)
+
+v_window *createWindow(void *mlx, char *name)
 {
-	mlx_hook(info->window1, 2, 0, keys, info);
-	mlx_hook(info->window1, 12, 0, test_expose, NULL);
-	mlx_hook(info->window1, 17, 0, exit_hook, NULL);
-	//update mouse location
-	mlx_hook(info->window1, 6, 0, motion, info);
+	v_window *tmp;
+	int num;
+
+	tmp = malloc(sizeof(v_window));
+	//Set function pointer?
+	if (!strcmp(name, "julia"))
+	{
+		tmp->func = juliaFunc;
+		tmp->type = julia;
+	}
+	if (!strcmp(name, "man"))
+	{
+		tmp->func = mandelbrotFunc;
+		tmp->type = mandelbrot;
+	}
+	tmp->window = mlx_new_window(mlx, WIDTH, HEIGHT, name);
+	tmp->image = mlx_new_image(mlx, WIDTH, HEIGHT);
+	tmp->pixel = mlx_get_data_addr(tmp->image, &num, &num, &num);
+	tmp->mlx = mlx; //This pointer wont work
+	tmp->mouse.actual = (t_vector){-0.7, 0.27015}; //Default
+	tmp->mouse.updated = (t_vector){-0.7, 0.27015}; //Default
+	return tmp;
 }
 
-t_info *newInfo(char *arg)
+
+t_info *newInfo(int argc, char **argv)
 {
 	t_info *info;
-	int tmp;
+	v_window *tmp;
 
 	info = malloc(sizeof(t_info));
 	info->mlx = mlx_init();
-	if (!strcmp("MJ", arg))
+	info->windows = malloc(sizeof(v_window *) * WIN_MAX);
+	bzero(info->windows, sizeof(v_window *) * WIN_MAX);
+	//Loop to get dimention?
+	while (--argc)
 	{
-		info->window1 = mlx_new_window(info->mlx, WIDTH, HEIGHT, "Mandelbrot");	
-		info->window2 = mlx_new_window(info->mlx, WIDTH, HEIGHT, "Julia");	
-		info->image2 = mlx_new_image(info->mlx, WIDTH, HEIGHT);
-		info->pixel2 = mlx_get_data_addr(info->image2, &tmp, &tmp, &tmp);	//Can keep it as null?
-	} else
-	{
-		info->window1 = mlx_new_window(info->mlx, WIDTH, HEIGHT, "other");	
+		tmp = createWindow(info->mlx, argv[argc]);
+		if (info->windows[tmp->type] == NULL)
+		{
+			info->windows[tmp->type] = tmp;
+		}
+		else 
+		{
+			printf("Duplicates are not allowed\n");
+			exit(EXIT_FAILURE);	
+		}
 	}
-	info->image1 = mlx_new_image(info->mlx, WIDTH, HEIGHT);
-	info->pixel1 = mlx_get_data_addr(info->image1, &tmp, &tmp, &tmp);
-	
-
-
-
 	return (info);
 }
 
@@ -248,22 +178,11 @@ int main(int argc, char **argv)
 	{
 		printf("Usage of ./fractal:\n\tEither: MJ or other\n");
 		exit(EXIT_FAILURE);
-	} else if (argc == 2) 
-	{
-		if ((strcmp("MJ", argv[1]) && strcmp("other", argv[1])))
-		{
-			printf("Usage of ./fractal:\n\tEither: MJ or other\n");
-			exit(EXIT_FAILURE);	
-		}
 	}
-	
-	info = newInfo(argv[1]);
-	
-
+	info = newInfo(argc, argv);
 	
 	
-	// 
-	set_hooks(NULL);
+	set_hooks(info);
 	// mlx_hook(window, 17, 0, exit_hook, NULL); 
 	mlx_loop(info->mlx);
 	return (0);

@@ -12,6 +12,7 @@ LIBS = -L $(PATH_MLX)  -lmlx -L $(PATH_LIBFT) -lft
 all: $(NAME)
 
 $(NAME): $(obj)
+	make -C $(PATH_LIBFT) 
 	$(CC) -o $@ $^ $(LIBS) $(LDFLAGS)
 
 f: $(obj)
